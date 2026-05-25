@@ -33,7 +33,10 @@ Mocker.GetMock<IManageCommandQueue>()
 Run:
 
 ```powershell
-dotnet test src/NzbDrone.Api.Test/Lidarr.Api.Test.csproj --filter FullyQualifiedName~CommandControllerFixture
+$solutionDir=(Resolve-Path '.\src').Path + '\'
+dotnet build src/Lidarr.sln -p:SolutionDir=$solutionDir -p:EnableAnalyzers=false -c Debug
+$env:PATH=(Resolve-Path '.\_output\net8.0').Path + ';' + $env:PATH
+dotnet test src/NzbDrone.Api.Test/Lidarr.Api.Test.csproj --no-build -p:SolutionDir=$solutionDir --filter FullyQualifiedName~CommandControllerFixture
 ```
 
 Expected: FAIL because API-posted `RefreshMonitoredDownloadsCommand` is currently queued at `CommandPriority.Normal`.
@@ -54,7 +57,7 @@ var priority = commandType == typeof(ManualImportCommand) ||
 Run:
 
 ```powershell
-dotnet test src/NzbDrone.Api.Test/Lidarr.Api.Test.csproj --filter FullyQualifiedName~CommandControllerFixture
+dotnet test src/NzbDrone.Api.Test/Lidarr.Api.Test.csproj --no-build -p:SolutionDir=$solutionDir --filter FullyQualifiedName~CommandControllerFixture
 ```
 
 Expected: PASS.
@@ -79,7 +82,7 @@ Mocker.GetMock<ITrackedDownloadService>()
 Run:
 
 ```powershell
-dotnet test src/NzbDrone.Core.Test/Lidarr.Core.Test.csproj --filter FullyQualifiedName~DownloadEventHubFixture
+dotnet test src/NzbDrone.Core.Test/Lidarr.Core.Test.csproj --no-build -p:SolutionDir=$solutionDir --filter FullyQualifiedName~DownloadEventHubFixture
 ```
 
 Expected: FAIL because `DownloadEventHub` currently removes the item without calling `StopTracking()`.
@@ -99,7 +102,7 @@ _trackedDownloadService.StopTracking(trackedDownload.DownloadItem.DownloadId);
 Run:
 
 ```powershell
-dotnet test src/NzbDrone.Core.Test/Lidarr.Core.Test.csproj --filter FullyQualifiedName~DownloadEventHubFixture
+dotnet test src/NzbDrone.Core.Test/Lidarr.Core.Test.csproj --no-build -p:SolutionDir=$solutionDir --filter FullyQualifiedName~DownloadEventHubFixture
 ```
 
 Expected: PASS.
@@ -114,12 +117,16 @@ Expected: PASS.
 Run:
 
 ```powershell
-dotnet test src/NzbDrone.Api.Test/Lidarr.Api.Test.csproj
-dotnet test src/NzbDrone.Core.Test/Lidarr.Core.Test.csproj
-dotnet build src/Lidarr.sln
+dotnet build src/Lidarr.sln -p:SolutionDir=$solutionDir -p:EnableAnalyzers=false -c Debug
+dotnet build src/Lidarr.Api.V1/Lidarr.Api.V1.csproj -p:SolutionDir=$solutionDir -c Debug
+dotnet build src/NzbDrone.Core.Test/Lidarr.Core.Test.csproj -p:SolutionDir=$solutionDir -c Debug
+dotnet test src/NzbDrone.Api.Test/Lidarr.Api.Test.csproj --no-build -p:SolutionDir=$solutionDir --filter FullyQualifiedName~CommandControllerFixture
+dotnet test src/NzbDrone.Core.Test/Lidarr.Core.Test.csproj --no-build -p:SolutionDir=$solutionDir --filter FullyQualifiedName~DownloadEventHubFixture
 ```
 
-Expected: all commands exit successfully with no test failures.
+Expected: all commands exit successfully with no focused test failures. The
+full core suite retains four unrelated baseline failures documented before
+source edits.
 
 - [ ] **Step 2: Inspect the patch scope**
 
