@@ -3,26 +3,30 @@
 # Builds the two patched Lidarr assemblies (Lidarr.Core.dll, Lidarr.Api.V1.dll)
 # from this fork and overlays them onto the LinuxServer nightly image.
 #
-# The assemblies are stamped with the SAME assembly version as the nightly base
-# image. Lidarr's src/Directory.Build.props uses <AssemblyVersion>10.0.0.*</…>,
-# whose "*" auto-generates a date-based build number — that mismatches the
-# nightly's version (e.g. 10.0.0.13418) and makes the runtime fail to resolve
-# Lidarr.Common at boot. We read the nightly's version from its deps.json and
-# pass it to the build so the overlaid DLLs bind against the image's other
-# Lidarr.*.dll.
+# The assemblies are stamped with the SAME assembly version as the nightly base.
+# Lidarr's src/Directory.Build.props uses <AssemblyVersion>10.0.0.*</…>, whose
+# "*" auto-generates a build/revision that won't match the nightly's version
+# (e.g. 10.0.0.13418); the mismatch makes the runtime fail to resolve
+# Lidarr.Common at boot. The real assembly version is only in the DLL's binary
+# metadata (not deps.json), so we read it via reflection and pass it to the build.
 
 # ---- stage 0: the target runtime image (source of truth for the version) ----
 FROM lscr.io/linuxserver/lidarr:nightly AS base
 
 # ---- stage 1: build the patched assemblies, version-matched to the base ----
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
-COPY --from=base /app/lidarr/bin/Lidarr.deps.json /tmp/Lidarr.deps.json
+COPY --from=base /app/lidarr/bin/Lidarr.Common.dll /probe/Lidarr.Common.dll
 WORKDIR /src
 COPY . .
 RUN set -eux; \
-    LIDARR_VERSION=$(grep -oE '10\.0\.0\.[0-9]{2,}' /tmp/Lidarr.deps.json | sort -u | head -1); \
-    test -n "$LIDARR_VERSION"; \
-    echo "Matching nightly Lidarr assembly version: $LIDARR_VERSION"; \
+    mkdir -p /probe/app; cd /probe/app; \
+    dotnet new console --framework net8.0 -o . >/dev/null 2>&1; \
+    printf 'System.Console.Write(System.Reflection.AssemblyName.GetAssemblyName(args[0]).Version.ToString());' > Program.cs; \
+    dotnet build -c Release -o /probe/bin >/dev/null 2>&1; \
+    LIDARR_VERSION="$(dotnet /probe/bin/app.dll /probe/Lidarr.Common.dll)"; \
+    cd /src; \
+    echo "Matching nightly Lidarr assembly version: ${LIDARR_VERSION}"; \
+    case "$LIDARR_VERSION" in 10.0.0.*) : ;; *) echo "Unexpected Lidarr version '$LIDARR_VERSION'"; exit 1 ;; esac; \
     dotnet publish src/Lidarr.Api.V1/Lidarr.Api.V1.csproj \
         -c Release -f net8.0 -r linux-x64 --self-contained false \
         -p:RunAnalyzers=false -p:TreatWarningsAsErrors=false -p:EnforceCodeStyleInBuild=false \
