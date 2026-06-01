@@ -1,3 +1,52 @@
+# Lidarr — johagan94 fork
+
+A fork of [Lidarr](https://github.com/Lidarr/Lidarr) that ports the Decypharr
+download-workflow changes maintained in
+[**realzombee**](https://github.com/realzombee)'s Sonarr and Radarr forks over
+to Lidarr, with Lidarr-specific adaptations.
+
+## About this fork
+
+The Unraid media stack this fork targets uses Decypharr-backed download handling
+alongside realzombee's custom *Arr images
+([Sonarr](https://github.com/realzombee/Sonarr) /
+[Radarr](https://github.com/realzombee/Radarr)). Stock Lidarr was missing two of
+the download-handling behaviours those sibling forks already carry, so this fork
+ports them to Lidarr's codebase. It tracks upstream `Lidarr/Lidarr` `develop` and
+is periodically re-synced.
+
+### Lidarr-specific changes
+
+1. **High-priority refresh commands** — `RefreshMonitoredDownloadsCommand`s
+   submitted through the API are queued at `CommandPriority.High` (the same
+   priority as `ManualImportCommand`), so Decypharr-triggered refreshes aren't
+   stuck behind lower-priority work.
+   → `src/Lidarr.Api.V1/Commands/CommandController.cs`
+2. **Eager tracked-download cleanup** — when an imported tracked download is
+   removed from its download client, Lidarr immediately stops tracking that
+   download ID via `ITrackedDownloadService.StopTracking()` instead of leaving a
+   stale entry.
+   → `src/NzbDrone.Core/Download/DownloadEventHub.cs`
+
+These mirror the equivalent patches realzombee maintains in the Sonarr/Radarr
+forks. Radarr-only behaviour (e.g. video probing), Unraid mount/performance
+tuning, and the [Tubifarry](https://github.com/johagan94/tubifarry-dev) plugin
+are intentionally **out of scope** here and handled separately.
+
+### Container image
+
+The `Fork Image` workflow builds `Lidarr.Core.dll` and `Lidarr.Api.V1.dll` from
+this branch and overlays them onto `lscr.io/linuxserver/lidarr:nightly`,
+publishing to GHCR (tags: `latest`, `develop`, commit SHA):
+
+```sh
+docker pull ghcr.io/johagan94/lidarr:latest
+```
+
+---
+
+*Everything below is the upstream Lidarr README.*
+
 # Lidarr
 
 [![Build Status](https://dev.azure.com/Lidarr/Lidarr/_apis/build/status/lidarr.Lidarr?branchName=develop)](https://dev.azure.com/Lidarr/Lidarr/_build/latest?definitionId=1&branchName=develop)
