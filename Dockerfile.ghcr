@@ -2,20 +2,34 @@
 #
 # Builds the two patched Lidarr assemblies (Lidarr.Core.dll, Lidarr.Api.V1.dll)
 # from this fork and overlays them onto the LinuxServer nightly image.
-# Mirrors the lidarr-package Dockerfile, but builds the DLLs from source so the
-# image always reflects the current develop branch (upstream sync + Decypharr ports).
+#
+# The assemblies are stamped with the SAME assembly version as the nightly base
+# image. Lidarr's src/Directory.Build.props uses <AssemblyVersion>10.0.0.*</…>,
+# whose "*" auto-generates a date-based build number — that mismatches the
+# nightly's version (e.g. 10.0.0.13418) and makes the runtime fail to resolve
+# Lidarr.Common at boot. We read the nightly's version from its deps.json and
+# pass it to the build so the overlaid DLLs bind against the image's other
+# Lidarr.*.dll.
 
-# ---- stage 1: build the patched assemblies from source ----
+# ---- stage 0: the target runtime image (source of truth for the version) ----
+FROM lscr.io/linuxserver/lidarr:nightly AS base
+
+# ---- stage 1: build the patched assemblies, version-matched to the base ----
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+COPY --from=base /app/lidarr/bin/Lidarr.deps.json /tmp/Lidarr.deps.json
 WORKDIR /src
 COPY . .
-# Publishing Lidarr.Api.V1 transitively builds Lidarr.Core. Framework-dependent
-# build for linux-x64 produces managed assemblies that drop into the nightly image.
-RUN dotnet publish src/Lidarr.Api.V1/Lidarr.Api.V1.csproj \
+RUN set -eux; \
+    LIDARR_VERSION=$(grep -oE '"Lidarr[A-Za-z0-9.]*/[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+"' /tmp/Lidarr.deps.json \
+                     | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | sort -u | head -1); \
+    test -n "$LIDARR_VERSION"; \
+    echo "Matching nightly Lidarr assembly version: $LIDARR_VERSION"; \
+    dotnet publish src/Lidarr.Api.V1/Lidarr.Api.V1.csproj \
         -c Release -f net8.0 -r linux-x64 --self-contained false \
         -p:RunAnalyzers=false -p:TreatWarningsAsErrors=false -p:EnforceCodeStyleInBuild=false \
-        -o /artifacts \
- && ls -l /artifacts/Lidarr.Core.dll /artifacts/Lidarr.Api.V1.dll
+        -p:AssemblyVersion="$LIDARR_VERSION" \
+        -o /artifacts; \
+    ls -l /artifacts/Lidarr.Core.dll /artifacts/Lidarr.Api.V1.dll
 
 # ---- stage 2: overlay onto the LinuxServer nightly image ----
 FROM lscr.io/linuxserver/lidarr:nightly
