@@ -26,7 +26,7 @@ RUN set -eux; \
     LIDARR_VERSION="$(dotnet /probe/bin/app.dll /probe/Lidarr.Common.dll)"; \
     cd /src; \
     echo "Matching nightly Lidarr assembly version: ${LIDARR_VERSION}"; \
-    case "$LIDARR_VERSION" in 10.0.0.*) : ;; *) echo "Unexpected Lidarr version '$LIDARR_VERSION'"; exit 1 ;; esac; \
+    case "$LIDARR_VERSION" in [0-9]*.[0-9]*.[0-9]*.[0-9]*) : ;; *) echo "Unexpected Lidarr version '$LIDARR_VERSION'"; exit 1 ;; esac; \
     dotnet publish src/Lidarr.Api.V1/Lidarr.Api.V1.csproj \
         -c Release -f net8.0 -r linux-x64 --self-contained false \
         -p:RunAnalyzers=false -p:TreatWarningsAsErrors=false -p:EnforceCodeStyleInBuild=false \
