@@ -3,6 +3,10 @@ name: Fork Image
 on:
   push:
     branches: [develop]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.gitignore'
   workflow_dispatch:
 
 permissions:

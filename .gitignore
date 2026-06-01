@@ -170,3 +170,7 @@ node_modules.nosync
 
 # Fork: internal planning/design documents (not part of the fork's source)
 docs/superpowers/
+
+# AI assistant / agent working directories
+.claude/
+.codex/
