@@ -1,0 +1,24 @@
+# syntax=docker/dockerfile:1
+#
+# Builds the two patched Lidarr assemblies (Lidarr.Core.dll, Lidarr.Api.V1.dll)
+# from this fork and overlays them onto the LinuxServer nightly image.
+# Mirrors the lidarr-package Dockerfile, but builds the DLLs from source so the
+# image always reflects the current develop branch (upstream sync + Decypharr ports).
+
+# ---- stage 1: build the patched assemblies from source ----
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+COPY . .
+# Publishing Lidarr.Api.V1 transitively builds Lidarr.Core. Framework-dependent
+# build for linux-x64 produces managed assemblies that drop into the nightly image.
+RUN dotnet publish src/Lidarr.Api.V1/Lidarr.Api.V1.csproj \
+        -c Release -f net8.0 -r linux-x64 --self-contained false \
+        -o /artifacts \
+ && ls -l /artifacts/Lidarr.Core.dll /artifacts/Lidarr.Api.V1.dll
+
+# ---- stage 2: overlay onto the LinuxServer nightly image ----
+FROM lscr.io/linuxserver/lidarr:nightly
+LABEL org.opencontainers.image.source="https://github.com/johagan94/Lidarr"
+LABEL org.opencontainers.image.description="Lidarr nightly with Decypharr workflow ports"
+COPY --from=build /artifacts/Lidarr.Core.dll /artifacts/Lidarr.Api.V1.dll /app/lidarr/bin/
+RUN chown abc:abc /app/lidarr/bin/Lidarr.Core.dll /app/lidarr/bin/Lidarr.Api.V1.dll
