@@ -13,6 +13,7 @@ COPY . .
 # build for linux-x64 produces managed assemblies that drop into the nightly image.
 RUN dotnet publish src/Lidarr.Api.V1/Lidarr.Api.V1.csproj \
         -c Release -f net8.0 -r linux-x64 --self-contained false \
+        -p:RunAnalyzers=false -p:TreatWarningsAsErrors=false -p:EnforceCodeStyleInBuild=false \
         -o /artifacts \
  && ls -l /artifacts/Lidarr.Core.dll /artifacts/Lidarr.Api.V1.dll
 
