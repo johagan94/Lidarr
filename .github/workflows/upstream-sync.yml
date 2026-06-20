@@ -1,0 +1,107 @@
+name: Upstream Sync
+
+# Auto-merge non-conflicting commits from upstream Lidarr/Lidarr:develop into this
+# fork's develop branch.
+#   - Clean merge   -> pushed to develop, then triggers the Fork Image rebuild.
+#   - Conflict      -> develop is left untouched; the run fails and an issue is
+#                      opened so the fork's patches are never clobbered.
+
+on:
+  schedule:
+    - cron: '0 6 * * *'   # daily at 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+  issues: write
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout develop
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 0
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch upstream develop
+        run: |
+          git remote add upstream https://github.com/Lidarr/Lidarr.git
+          git fetch upstream develop
+
+      - name: Merge upstream (non-conflicting only)
+        id: merge
+        run: |
+          before=$(git rev-parse HEAD)
+          if git merge -m "Merge upstream Lidarr/Lidarr develop into develop (auto-sync)" FETCH_HEAD; then
+            after=$(git rev-parse HEAD)
+            if [ "$before" = "$after" ]; then
+              echo "result=up-to-date" >> "$GITHUB_OUTPUT"
+              echo "Already up to date with upstream."
+            else
+              echo "result=merged" >> "$GITHUB_OUTPUT"
+              echo "Merged upstream cleanly: $before -> $after"
+            fi
+          else
+            git merge --abort || true
+            echo "result=conflict" >> "$GITHUB_OUTPUT"
+            echo "Upstream merge has conflicts; develop left untouched."
+          fi
+
+      - name: Push merged changes
+        if: steps.merge.outputs.result == 'merged'
+        run: git push origin develop
+
+      - name: Trigger Fork Image rebuild
+        if: steps.merge.outputs.result == 'merged'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run fork-image.yml --ref develop
+
+      - name: Open conflict issue
+        if: steps.merge.outputs.result == 'conflict'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          open=$(gh issue list --label upstream-sync-conflict --state open --json number --jq 'length')
+          if [ "$open" != "0" ]; then
+            echo "A conflict issue is already open; skipping."
+            exit 0
+          fi
+          cat > "$RUNNER_TEMP/conflict.md" <<'EOF'
+          The scheduled **Upstream Sync** workflow could not merge `Lidarr/Lidarr:develop`
+          into `develop` cleanly — there are conflicts that need a manual resolution.
+
+          ```bash
+          git clone https://github.com/johagan94/Lidarr.git
+          cd Lidarr
+          git remote add upstream https://github.com/Lidarr/Lidarr.git
+          git fetch upstream
+          git merge upstream/develop   # resolve conflicts, then commit
+          git push origin develop
+          ```
+
+          Auto-sync will keep skipping conflicting runs until this is merged.
+          Close this issue once the merge is done.
+          EOF
+          gh issue create \
+            --title "Upstream auto-sync blocked by merge conflict" \
+            --label upstream-sync-conflict \
+            --body-file "$RUNNER_TEMP/conflict.md"
+
+      - name: Fail run on conflict
+        if: steps.merge.outputs.result == 'conflict'
+        run: |
+          echo "::error::Upstream merge had conflicts — a manual merge is required (see the open issue)."
+          exit 1
